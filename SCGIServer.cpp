@@ -60,10 +60,11 @@ SCGIServer::ResponseStream::~ResponseStream()
 {
 }
 
-SCGIServer::SCGIServer(const std::function<void (const Request&, ResponseStream&)>& callback)
+SCGIServer::SCGIServer(const std::function<void (const Request&, ResponseStream&)>& callback, long timeout)
     : m_callback(callback)
     , m_base(0)
     , m_listener(0)
+    , m_timeout(timeout)
 {
     m_base = event_base_new();
     assert(m_base);
@@ -153,11 +154,7 @@ void SCGIServer::newDataCallback(bufferevent* event, Connection* connection)
     connection->readAll = true;
     
     ResponseStream stream(output);
-    std::chrono::monotonic_clock::time_point before = std::chrono::monotonic_clock::now();
     m_callback(connection->request, stream);
-    std::chrono::monotonic_clock::time_point after = std::chrono::monotonic_clock::now();
-    std::chrono::duration<double> diff = after - before;
-    std::cout << "Time: " << diff.count() << std::endl << std::endl;
 }
 
 void newDataCallback(bufferevent* event, void* context)
@@ -189,7 +186,7 @@ void dataWrittenCallback(bufferevent* event, void* context)
 
 void SCGIServer::newEventCallback(bufferevent* event, short events, Connection* connection)
 {
-    if (events & BEV_EVENT_EOF || events & BEV_EVENT_ERROR) {
+    if (events & BEV_EVENT_EOF || events & BEV_EVENT_ERROR || BEV_EVENT_TIMEOUT) {
         bufferevent_free(event);
         delete connection;
     }
@@ -208,6 +205,11 @@ void SCGIServer::newConnectionCallback(evconnlistener* listener, evutil_socket_t
     Connection* connection = new Connection(this);
     bufferevent* event = bufferevent_socket_new(m_base, fd, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(event, ::newDataCallback, ::dataWrittenCallback, ::newEventCallback, connection);
+    
+    timeval val;
+    val.tv_usec = m_timeout;
+    bufferevent_set_timeouts(event, &val, &val);
+    
     event_priority_set(&event->ev_write, 0);
     event_priority_set(&event->ev_read, 1);
     bufferevent_enable(event, EV_READ | EV_WRITE);

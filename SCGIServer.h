@@ -76,7 +76,7 @@ class SCGIServer
         };
         
     public:
-        SCGIServer(const std::function<void (const Request&, ResponseStream&)>& callback);
+        SCGIServer(const std::function<void (const Request&, ResponseStream&)>& callback, long timeout);
         ~SCGIServer();
         
         void start(const sockaddr* address, size_t length);
@@ -92,6 +92,7 @@ class SCGIServer
         std::function<void (const Request&, ResponseStream&)> m_callback;
         event_base* m_base;
         evconnlistener* m_listener;
+        long m_timeout;
         
         friend void newDataCallback(bufferevent*, void*);
         friend void dataWrittenCallback(bufferevent*, void*);
